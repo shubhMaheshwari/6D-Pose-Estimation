@@ -2,37 +2,36 @@ import os
 import sys 
 import logging
 import numpy as np
-from tensorboardX import SummaryWriter
 
+########################## SET RANDOM SEEDS #################################
+np.random.seed(2)
 
 ############################# LIBRARY IMPORTS ####################################################
 assert __file__[-1] != '/' , f'File:{__init__}, cannot be parsed' 
-SRC_PATH,_ = os.path.split(os.path.abspath(__file__))
-HOME_PATH,_ = os.path.split(SRC_PATH)
-
-sys.path.append(HOME_PATH)
-
+SRC_DIR,_ = os.path.split(os.path.abspath(__file__))
+HOME_DIR,_ = os.path.split(SRC_DIR)
+sys.path.extend([HOME_DIR])
 
 # ############################ FOLDER PATHS #######################################################
-DATASET_PATH = os.path.join(HOME_PATH,'dataset') # Path containing all the training data (currently using xyz)
-TRAIN_PATH = os.path.join(DATASET_PATH,'training_data/training_data_filtered/training_data')
-TEST_PATH = os.path.join(DATASET_PATH,'testing_data_pose/testing_data_pose_filtered/testing_data')
+# Folders
+DATASET_DIR = os.path.join(HOME_DIR,'dataset') # Path containing all the training data (currently using xyz)
+RENDER_DIR = os.path.join(HOME_DIR,'rendered_videos')
+LOG_DIR = os.path.join(HOME_DIR,'logs')
 
-RENDER_PATH = os.path.join(HOME_PATH,'rendered_videos')
-LOG_PATH = os.path.join(HOME_PATH,'logs')
-
+## Dataset split paths 
+TRAIN_PATH = os.path.join(DATASET_DIR,"training_data/training_data_filtered/training_data/")
+TEST_PATH = os.path.join(DATASET_DIR,"dataset/testing_data_pose/testing_data_pose_filtered/testing_data/")
 
 # ############################ DATASET CONSTANTS #######################################################
+# Excercise categories 
+NUM_OBJECTS=79
+LABELS = ['LSLS', 'CMJ', 'PU', 'SQT', 'RSLS', 'BAPF', 'LLTF', 'LLT', 'RCMJ', 'PUF', 'BAP', 'RLTF', 'RLT', 'LCMJ'] 
 
 
-
-ROOT_INIT_ROTVEC = np.array([0,np.pi/2,0])
-
-
-############################# HYPERPARAMETERS #######################################################
-cuda=True
-TRAIN_BATCH_SIZE = 64
-TEST_BATCH_SIZE = 64
+############################# POSE Estimation HYPERPARAMETERS #######################################################
+CUDA=True
+TRAIN_BATCH_SIZE=16
+RENDER=True
 
 ############################# LOGGING #######################################################
 DEBUG = True
@@ -74,13 +73,18 @@ class CustomFormatter(logging.Formatter):
 		return formatter.format(record)
 
 def get_logger(task_name=None):
+	global LOG_DIR
+	if task_name is None: 
+		task_name = 'tmp'
 
-	os.makedirs(os.path.join(LOG_PATH, task_name),exists_ok=True)
+	LOG_DIR = os.path.join(LOG_DIR, task_name)
+
+	os.makedirs(LOG_DIR,exist_ok=True)
 
 	logger = logging.getLogger(__name__)
 	logger.setLevel(level=logging.DEBUG if DEBUG else logging.WARNING)
 
-	handler = logging.FileHandler(os.path.join(LOG_PATH, task_name,"log.txt"))
+	handler = logging.FileHandler(os.path.join(LOG_DIR,"log.txt"))
 	handler.setLevel(level=logging.DEBUG if DEBUG else logging.WARNING)
 	formatter = logging.Formatter(
 		'%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -92,7 +96,12 @@ def get_logger(task_name=None):
 	handler.setFormatter(CustomFormatter())
 	logger.addHandler(handler)
 
-	writer = SummaryWriter(os.path.join(LOG_PATH, task_name))
+	try: 
+		from tensorboardX import SummaryWriter
+		writer = SummaryWriter(LOG_DIR)
+
+	except ModuleNotFoundError:
+		logger.warning("Unable to load tensorboardX to write summary.")
+		writer = None
 
 	return logger, writer
-
