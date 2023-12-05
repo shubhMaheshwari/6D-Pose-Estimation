@@ -3,6 +3,7 @@
     This involves determining the 3D rotation and translation to orient the 3D object into the same location in the image. The report outlines the algorithm, compares baselines and, provides a custom solution for object pose estimation.    
 
 
+
 ## Alogrithm 
     - Load image 
     - Get/Predict Segmentation Mask 
@@ -15,6 +16,9 @@
         - Custom 
     - Render Result   
 
+
+## Contributions 
+    - End-to-end diffrentiable pipeline for ICP 
 
 
 # A. Installation

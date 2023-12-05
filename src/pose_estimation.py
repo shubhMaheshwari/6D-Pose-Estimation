@@ -21,6 +21,9 @@ class ObjectPoseEstimator:
 		self.device = torch.device('cuda' if CUDA else 'cpu')
 		self.segmentor = None
 
+		# ICP 
+		self.ICP = None
+
 		# Get logger 
 		self.logger,self.writer = get_logger(task_name='ICP')
 
@@ -48,7 +51,7 @@ class ObjectPoseEstimator:
 		v = v.transpose(dim0=1,dim1=2)
 		
 		u = u.to(self.device)
-		v = u.to(self.device)
+		v = v.to(self.device)
 		
 		X = (u - cx[:,None,None]) * depth_im / fx[:,None,None]
 		Y = (v - cy[:,None,None]) * depth_im / fy[:,None,None]
@@ -56,7 +59,31 @@ class ObjectPoseEstimator:
 		return torch.stack([X, Y, Z],dim=3)
 
 	def reshape_pcd(self,sample): 
-		return sample['depth_pc'][sample['mask'] < 79,:] 
+		"""
+			Given a batch of XYZ image create a single batch of 3D vertices to for parallelly running ICP across multiple objects
+			- Input: 
+				depth_pc: BxHxWx3 
+				labels: BxHxW 
+			- Output 
+				pcd: B'x3
+				pcd2meta: B'x4 -> Maps to batchsize,h,w,label for each point
+				pcd2pose: B'x2 -> Maps each point to the index of the pose transformation matrix to register its corresponding 3D model.
+		"""
+
+		cond = sample['label'] < NUM_OBJECTS
+		points = sample['depth_pc'][cond,:]
+		label = sample['label'][cond]
+		pcd2meta = list(torch.where(cond)) + [label]  
+		pcd2meta = torch.cat([x.unsqueeze(1) for x in  pcd2meta],dim=1)
+
+		pose2meta_03,pcd2pose = torch.unique(pcd2meta[:,[0,3]],return_inverse=True,dim=0)
+
+		assert torch.all(pose2meta_03[pcd2pose] == pcd2meta[:,[0,3]]), "Inverse mapping not unique"		
+
+		pcd = {'points': points, 'pcd2meta':pcd2meta,'pose2meta_03':pose2meta_03, 'pcd2pose':pcd2pose }
+
+
+		return pcd 
 
 
 	def pose_estimation(self,sample): 
@@ -107,6 +134,8 @@ class ObjectPoseEstimator:
 		# 3. Get 3D models 
 		
 		sample["pcd"] = self.reshape_pcd(sample)
+
+		pred_pose = 
 
 
 
