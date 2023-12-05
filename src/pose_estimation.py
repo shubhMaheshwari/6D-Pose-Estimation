@@ -27,18 +27,37 @@ class ObjectPoseEstimator:
 		# Visualizer 
 		self.vis = Visualizer()
 
-	@staticmethod
-	def depth2pc(depth_im,intrin): 
+
+	def cpu_to_gpu(self,sample): 
+		sample_gpu = {}
+		for k in sample:
+			if type(sample[k]) == torch.Tensor: 
+				sample_gpu[k] = sample[k].to(self.device)
+			elif type(sample[k]) == np.ndarray: 
+				sample_gpu[k] = torch.from_numpy(sample[k]).to(self.device)
+			else:
+				sample_gpu[k] = sample[k]
+		return sample_gpu
+
+	def depth2pc(self,depth_im,intrin): 
 		
 		fx, cx, fy, cy = intrin[:,0,0], intrin[:,0,2], intrin[:,1,1], intrin[:,1,2]
 		bs, height, width = depth_im.shape
 		u = torch.arange(width) * torch.ones([bs,height, width])
 		v = torch.arange(height) * np.ones([bs,width, height])
 		v = v.transpose(dim0=1,dim1=2)
+		
+		u = u.to(self.device)
+		v = u.to(self.device)
+		
 		X = (u - cx[:,None,None]) * depth_im / fx[:,None,None]
 		Y = (v - cy[:,None,None]) * depth_im / fy[:,None,None]
 		Z = depth_im
 		return torch.stack([X, Y, Z],dim=3)
+
+	def reshape_pcd(self,sample): 
+		return sample['depth_pc'][sample['mask'] < 79,:] 
+
 
 	def pose_estimation(self,sample): 
 		"""
@@ -46,6 +65,7 @@ class ObjectPoseEstimator:
 			Input: RGBD image 
 			Get point cloud using the depth image 
 			Get/Predict Segmentation Mask 
+			Reshape images to pcd
 			Load 3D model
 			Estimate 6D parameters for each object using either
 				Chamfer + ICP
@@ -54,6 +74,9 @@ class ObjectPoseEstimator:
 				Custom 
 			Render Result
 		"""
+
+		if CUDA:
+			sample = self.cpu_to_gpu(sample)
 
 
 		# 1. Get point cloud from depth image + mask 
@@ -81,7 +104,9 @@ class ObjectPoseEstimator:
 			self.vis.show_segmentation(sample.copy())  
 		self.logger.info("[Completed] Get Segmentation map")
 
-		# 3. 
+		# 3. Get 3D models 
+		
+		sample["pcd"] = self.reshape_pcd(sample)
 
 
 

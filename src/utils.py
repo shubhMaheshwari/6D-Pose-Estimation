@@ -20,13 +20,14 @@ LOG_DIR = os.path.join(HOME_DIR,'logs')
 
 ## Dataset split paths 
 TRAIN_PATH = os.path.join(DATASET_DIR,"training_data/training_data_filtered/training_data/")
-TEST_PATH = os.path.join(DATASET_DIR,"dataset/testing_data_pose/testing_data_pose_filtered/testing_data/")
+TEST_PATH = os.path.join(DATASET_DIR,"testing_data_pose/testing_data_pose_filtered/testing_data/")
 
 # ############################ DATASET CONSTANTS #######################################################
 # Excercise categories 
 NUM_OBJECTS=79
-LABELS = ['LSLS', 'CMJ', 'PU', 'SQT', 'RSLS', 'BAPF', 'LLTF', 'LLT', 'RCMJ', 'PUF', 'BAP', 'RLTF', 'RLT', 'LCMJ'] 
-
+VALID_CLASS_INDICES:[1, 5, 8, 13, 14, 18, 20, 21, 26, 29, 30, 35, 39, 42, 43, 48, 50, 51, 52, 55, 56, 57, 58] 
+LABELS = ['', 'a_lego_duplo', '', '', '', 'b_lego_duplo', '', '', 'bleach_cleanser', '', '', '', '', 'c_toy_airplane', 'cracker_box', '', '', '', 'd_toy_airplane', '', 'e_lego_duplo', 'e_toy_airplane', '', '', '', '', 'foam_brick', '', '', 'g_lego_duplo', 'gelatin_box', '', '', '', '', 'jenga', '', '', '', 'master_chef_can', '', '', 'mustard_bottle', 'nine_hole_peg_test', '', '', '', '', 'potted_meat_can', '', 'prism', 'pudding_box', 'rubiks_cube', '', '', 'sugar_box', 'tomato_soup_can', 'tuna_fish_can', 'wood_block', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
+MAX_OBJECTS_IN_SAMPLE = 10
 
 ############################# POSE Estimation HYPERPARAMETERS #######################################################
 CUDA=True

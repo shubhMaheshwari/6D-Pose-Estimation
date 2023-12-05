@@ -16,6 +16,7 @@ from torch.utils.data import DataLoader
 
 # Defined Modules
 from utils import *
+import plotter
 
 class SyntheticDataset(Dataset):
 	def __init__(self,split_type='train'): 
@@ -40,7 +41,7 @@ class SyntheticDataset(Dataset):
 		
 		split_path = os.path.join(datapath,split_path)
 		with open(split_path,'r') as f: 
-			self.samples = f.read().split('\n')
+			self.samples = [ x for x in  f.read().split('\n') if len(x) > 0]
 
 	@staticmethod
 	def load_pickle(filename):
@@ -70,9 +71,9 @@ class SyntheticDataset(Dataset):
 	def load_sample(sample_path,split_type='test',mask_path=""): 
 		rgb,depth = SyntheticDataset.load_rgbd(sample_path)
 		pose = {} if split_type == 'test' else SyntheticDataset.load_pose(sample_path)
-		mask = np.empty(0) if not os.path.isfile(mask_path) else SyntheticDataset.load_mask(mask_path)		
+		mask = SyntheticDataset.load_mask(mask_path) if os.path.isfile(mask_path) else np.empty(0)		
 
-		gt_poses = np.array([ np.zeros((4,4)) if x is None else x for x in pose['poses_world']  ])
+		gt_poses = np.array([ np.zeros((4,4)) if x is None else x for x in pose['poses_world']  ]) if split_type != 'test' else np.empty(0) 
 		object_ids = np.zeros(NUM_OBJECTS)
 		object_ids[pose['object_ids']] = 1
 	
@@ -93,15 +94,62 @@ class SyntheticDataset(Dataset):
 
 def analyze_dataset(): 
 
-	object_names = ['']*79
-	per_object_distribution = [0]*79
-	
-	for split_type in ['train','val','test']: 
+	logger, writer = get_logger(task_name='Dataset-Analysis')
+
+	# Analysis
+	object_names = ['']*NUM_OBJECTS
+	per_object_distribution = {}
+	num_object_distribution = {}
+	per_object_num_points = {}
+	max_objects_per_sample = 0
+	valid_classes = 0
+
+
+	for split_type in ['test','train','val']: 
 		
 		dataset = SyntheticDataset(split_type=split_type)
-		for i,sample in range(len(dataset)):
-			dataset.__getitem__(i) 
+		per_object_distribution[split_type] = np.zeros(NUM_OBJECTS) 
+		num_object_distribution[split_type] = [] 
+		per_object_num_points[split_type] = {}
+
+		for idx in range(len(dataset)):
+			sample_path = os.path.join(dataset.datapath,'v2.2',dataset.samples[idx])
+			print(sample_path)
+			# try:
+			# For each sample, we check  
+			sample_meta = dataset.load_pose(sample_path)
+			sample_mask = dataset.load_mask(sample_path + '_label_kinect.png')
 			
+			# Make sure correct mask corresponds to meta file
+			assert set(np.unique(sample_mask)) == set(np.unique(sample_mask)), f"Segmentation mask:{np.unique(sample_mask)} and objects ids:{np.unique(sample_mask)} do not match"
+			
+			for i,x in enumerate(sample_meta['object_ids']):
+				if sample_meta['object_names'][i] != object_names[x]: 
+					logger.debug(f"{split_type} {idx}/{len(dataset)} Replacing string for label-{x}={object_names[x]} to {sample_meta['object_names'][i]}") 
+					object_names[x] = sample_meta['object_names'][i]
+
+				num_points = (sample_mask == x).sum()
+				if x not in per_object_num_points[split_type]: 
+					per_object_num_points[split_type][x] = []
+				per_object_num_points[split_type][x].append(num_points)		
+
+			per_object_distribution[split_type][sample_meta['object_ids']] += 1
+			num_object_distribution[split_type].append(len(sample_meta['object_ids']))
+			# except Exception as e: 
+			# 	logger.warning(f"Unble to load meta data:{sample_meta},{sample_path}\n{e}")
+
+		num_object_distribution[split_type] = np.array(num_object_distribution[split_type])
+
+	valid_classes = [i for i,x in enumerate(object_names) if len(x) > 0 ]
+
+	logger.info(f"NUM VALID Classes: {len(valid_classes)}  Indices:{valid_classes} Object Names:{object_names}")
+	logger.info(f"Max Objects : {[(x,num_object_distribution[x].max()) for x in num_object_distribution]}")
+	logger.info(f"Per Object Distribution:{[per_object_distribution]}")
+
+
+	plotter.plot_num_object_distribution(num_object_distribution,save_path=os.path.join(RENDER_DIR,'NumberObjectDistribution.png'))
+	plotter.plot_per_object_distribution(per_object_distribution,object_names,save_path=os.path.join(RENDER_DIR,'PerObjectDistribution.png'))
+	plotter.plot_points_object_distribution(per_object_num_points,object_names,save_path=os.path.join(RENDER_DIR,'NumPointsObjectDistribution'))
 
 
 	# meshes = MeshInfo()
