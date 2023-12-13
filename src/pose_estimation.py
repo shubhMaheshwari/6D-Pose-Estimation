@@ -12,20 +12,26 @@ from torch.utils.data import DataLoader
 
 # Local Modules 
 from utils import *
-from dataloader import SyntheticDataset
+from dataloader import SyntheticDataset,MeshInfo
 from renderer import Visualizer
+from icp import ICP
 
 
 class ObjectPoseEstimator: 
 	def __init__(self): 
 		self.device = torch.device('cuda' if CUDA else 'cpu')
-		self.segmentor = None
-
-		# ICP 
-		self.ICP = None
 
 		# Get logger 
 		self.logger,self.writer = get_logger(task_name='ICP')
+
+		self.segmentor = None
+
+		# Mesh Loader 
+		self.meshloader =  MeshInfo(logger=self.logger)
+
+		# ICP 
+		self.icp = ICP()
+
 
 		# Visualizer 
 		self.vis = Visualizer()
@@ -58,7 +64,7 @@ class ObjectPoseEstimator:
 		Z = depth_im
 		return torch.stack([X, Y, Z],dim=3)
 
-	def reshape_pcd(self,sample): 
+	def reshape_image2pcd(self,sample): 
 		"""
 			Given a batch of XYZ image create a single batch of 3D vertices to for parallelly running ICP across multiple objects
 			- Input: 
@@ -67,7 +73,9 @@ class ObjectPoseEstimator:
 			- Output 
 				pcd: B'x3
 				pcd2meta: B'x4 -> Maps to batchsize,h,w,label for each point
-				pcd2pose: B'x2 -> Maps each point to the index of the pose transformation matrix to register its corresponding 3D model.
+				pose2label: Px2 -> Maps p-th pose to the (batchsize,label) to which it belongs 
+				pcd2pose: B' -> Maps each b-th point to the p-th pose transformation matrix which needs to be estimated.
+
 		"""
 
 		cond = sample['label'] < NUM_OBJECTS
@@ -76,11 +84,13 @@ class ObjectPoseEstimator:
 		pcd2meta = list(torch.where(cond)) + [label]  
 		pcd2meta = torch.cat([x.unsqueeze(1) for x in  pcd2meta],dim=1)
 
-		pose2meta_03,pcd2pose = torch.unique(pcd2meta[:,[0,3]],return_inverse=True,dim=0)
+		pose2label,pcd2pose = torch.unique(pcd2meta[:,[0,3]],return_inverse=True,dim=0)
 
-		assert torch.all(pose2meta_03[pcd2pose] == pcd2meta[:,[0,3]]), "Inverse mapping not unique"		
+		assert torch.all(pose2label[pcd2pose] == pcd2meta[:,[0,3]]), "Inverse mapping not unique"		
 
-		pcd = {'points': points, 'pcd2meta':pcd2meta,'pose2meta_03':pose2meta_03, 'pcd2pose':pcd2pose }
+		mesh_ids = torch.unique(pose2label[:,-1]) 	
+
+		pcd = {'points': points, 'pcd2meta':pcd2meta,'pose2label':pose2label, 'pcd2pose':pcd2pose, 'mesh_ids':mesh_ids }
 
 
 		return pcd 
@@ -93,12 +103,13 @@ class ObjectPoseEstimator:
 			Get point cloud using the depth image 
 			Get/Predict Segmentation Mask 
 			Reshape images to pcd
-			Load 3D model
-			Estimate 6D parameters for each object using either
-				Chamfer + ICP
-				Pointnet 
-				Pointnet + ICP 
-				Custom 
+			ICP:
+				Load 3D model
+				Estimate 6D parameters for each object using either
+					Chamfer + ICP
+					Pointnet 
+					Pointnet + ICP 
+					Custom 
 			Render Result
 		"""
 
@@ -109,8 +120,8 @@ class ObjectPoseEstimator:
 		# 1. Get point cloud from depth image + mask 
 		sample['depth_pc'] = self.depth2pc(sample['depth'],sample['intrinsic'])
 		print("Depth to pc:",sample['depth_pc'].shape)
-		if RENDER:
-			self.vis.show_depth_pc(sample)  
+		# if RENDER:
+		# 	self.vis.show_depth_pc(sample)  
 		self.logger.info("[Completed] Extract Point cloud from depth images")
 
 		# 2. Get segmentation mask
@@ -127,15 +138,21 @@ class ObjectPoseEstimator:
 				label.append(mask[None])
 
 			sample['label'] = torch.cat(label,dim=0)
-		if RENDER:
-			self.vis.show_segmentation(sample.copy())  
+		# if RENDER:
+		# 	self.vis.show_segmentation(sample.copy())  
 		self.logger.info("[Completed] Get Segmentation map")
 
-		# 3. Get 3D models 
-		
-		sample["pcd"] = self.reshape_pcd(sample)
+		# 3. Convert to 3D 
+		sample["pcd"] = self.reshape_image2pcd(sample)
 
-		pred_pose = 
+		# 4. Load 3D models
+		sample['mesh'] = self.meshloader.load_sample(sample['pcd']['mesh_ids'])
+
+		for mesh in sample['mesh']:
+			mesh.show() 
+
+
+		sample["pred_pose"] = self.icp(sample["pcd"])
 
 
 

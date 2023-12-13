@@ -3,10 +3,12 @@ import os
 import sys
 
 # File loaders
+import PIL
 import trimesh 
 import pickle 
 import numpy as np 
 import pandas as pd
+import collada 
 import matplotlib.pyplot as plt
 
 # DL Modules 
@@ -91,6 +93,154 @@ class SyntheticDataset(Dataset):
 	def __len__(self): 
 		return len(self.samples)
 
+
+class MeshInfo(Dataset): 
+	"""
+		Load the mesh for each 3D model and other information provided.
+	"""
+	def __init__(self,logger=None): 
+
+		self.meshes = self.load_mesh()
+		self.logger = logger
+
+		
+
+	def load_mesh(self):
+		
+		# Load model details 
+		mesh_info = pd.read_csv(os.path.join(TRAIN_PATH,'objects_v1.csv'))
+
+		meshes = {}
+		for i in VALID_CLASS_INDICES: 
+			mesh = {}
+			mesh['name'] = LABELS[i]
+			mesh['path'] = os.path.join(MESH_PATH,mesh['name'],'visual_meshes','visual.dae')
+
+			pd_index = list(mesh_info.index[mesh_info['object'] == mesh['name']])
+			assert len(pd_index) == 1, f"Unable to find mesh:{mesh['name']} in objects.csv"
+			mesh['info'] = mesh_info.iloc[pd_index[0]].T.to_dict()
+			meshes[i] = mesh
+
+		return meshes
+
+	##### Copied from Trimesh for convience: https://github.com/MPEGGroup/trimesh/blob/8f8c807843645c4bbc731b451a9bc1038d34cede/trimesh/exchange/dae.py#L262
+	def _load_texture(self,image_path):
+		"""
+		Load a texture from a file into a PIL image.
+		"""
+		assert os.path.isfile(image_path), f"{image_path} does not exist"
+		image = PIL.Image.open(image_path)
+		return image
+	
+	def _parse_material(self,effect,idx):
+		"""
+		Turn a COLLADA effect into a trimesh material.
+		params: 
+			effect: Collada effect
+			idx: mesh_id
+		"""
+
+		# Compute base color
+		baseColorFactor = np.ones(4)
+		baseColorTexture = None
+		if isinstance(effect.diffuse, collada.material.Map):
+			try:
+
+				image_path = os.path.join(
+					MESH_PATH,self.meshes[idx]['name'],'visual_meshes',
+					effect.diffuse.sampler.surface.image.path)
+				
+				baseColorTexture = self._load_texture(image_path)
+			except BaseException:
+				self.logger.warning('unable to load base texture',exc_info=True)
+		elif effect.diffuse is not None:
+			baseColorFactor = effect.diffuse
+
+		# Compute emission color
+		emissiveFactor = np.zeros(3)
+		emissiveTexture = None
+		if isinstance(effect.emission, collada.material.Map):
+			try:
+				image_path = os.path.join(
+					MESH_PATH,self.meshes[idx]['name'],'visual_meshes',
+					effect.diffuse.sampler.surface.image.path)
+				emissiveTexture = self._load_texture(image_path)
+			except BaseException:
+				self.logger.warning('unable to load emissive texture',
+							exc_info=True)
+		elif effect.emission is not None:
+			emissiveFactor = effect.emission[:3]
+
+		# Compute roughness
+		roughnessFactor = 1.0
+		if (not isinstance(effect.shininess, collada.material.Map)
+				and effect.shininess is not None):
+			roughnessFactor = np.sqrt(2.0 / (2.0 + effect.shininess))
+
+		# Compute metallic factor
+		metallicFactor = 0.0
+
+		# Compute normal texture
+		normalTexture = None
+		if effect.bumpmap is not None:
+			try:
+				image_path = os.path.join(
+					MESH_PATH,self.meshes[idx]['name'],'visual_meshes',
+					effect.bumpmap.sampler.surface.image.path)
+				normalTexture = self._load_texture(image_path)
+			except BaseException:
+				self.logger.warning('unable to load bumpmap',
+							exc_info=True)
+
+		return trimesh.visual.material.PBRMaterial(
+			emissiveFactor=emissiveFactor,
+			emissiveTexture=emissiveTexture,
+			normalTexture=normalTexture,
+			baseColorTexture=baseColorTexture,
+			baseColorFactor=baseColorFactor,
+			metallicFactor=metallicFactor,
+			roughnessFactor=roughnessFactor
+		)
+
+	
+	def __getitem__(self,idx):
+		
+		assert type(idx) == int, f"Idx type:{type(idx)} not int. Cannot load mesh." 
+		filepath = self.meshes[idx]['path']
+		# c = collada.Collada(filepath)
+		# material = self._parse_material(c.materials[0].effect,idx)
+
+		# primitive=c.geometries[0].primitives[0]
+		# texcoord=primitive.texcoordset[0]
+		# texcoord_index = primitive.texcoord_indexset[0]
+		# uv = texcoord[texcoord_index].reshape((len(texcoord_index) * 3, 2))
+
+		# tvisual = trimesh.visual.TextureVisuals(uv=uv,material=material)
+		# data = trimesh.load(filepath,process=False)
+		# mesh_key = next(iter(data.geometry)) 
+		# tmesh = data.geometry[mesh_key]
+		# tmesh = trimesh.Trimesh(vertices=tmesh.vertices,
+		# 	faces=tmesh.faces,
+		# 	face_normals=tmesh.face_normals,
+		# 	visual=tvisual,
+		# 	validate=True,
+		# 	process=False
+		# )
+
+		cur_dir = os.getcwd()
+		ch_dir = os.path.dirname(filepath)
+		os.chdir(ch_dir)
+		tmesh = trimesh.load(filepath)
+		os.chdir(cur_dir)
+		
+		
+		# tmesh.show()
+
+
+		return tmesh
+	
+	def load_sample(self,mesh_ids):
+		return [ self.__getitem__(int(i)) for i in mesh_ids ]
 
 def analyze_dataset(): 
 

@@ -15,6 +15,7 @@ sys.path.extend([HOME_DIR])
 # ############################ FOLDER PATHS #######################################################
 # Folders
 DATASET_DIR = os.path.join(HOME_DIR,'dataset') # Path containing all the training data (currently using xyz)
+MESH_PATH = os.path.join(DATASET_DIR,'models','models')
 RENDER_DIR = os.path.join(HOME_DIR,'rendered_videos')
 LOG_DIR = os.path.join(HOME_DIR,'logs')
 
@@ -25,7 +26,7 @@ TEST_PATH = os.path.join(DATASET_DIR,"testing_data_pose/testing_data_pose_filter
 # ############################ DATASET CONSTANTS #######################################################
 # Excercise categories 
 NUM_OBJECTS=79
-VALID_CLASS_INDICES:[1, 5, 8, 13, 14, 18, 20, 21, 26, 29, 30, 35, 39, 42, 43, 48, 50, 51, 52, 55, 56, 57, 58] 
+VALID_CLASS_INDICES = [1, 5, 8, 13, 14, 18, 20, 21, 26, 29, 30, 35, 39, 42, 43, 48, 50, 51, 52, 55, 56, 57, 58] 
 LABELS = ['', 'a_lego_duplo', '', '', '', 'b_lego_duplo', '', '', 'bleach_cleanser', '', '', '', '', 'c_toy_airplane', 'cracker_box', '', '', '', 'd_toy_airplane', '', 'e_lego_duplo', 'e_toy_airplane', '', '', '', '', 'foam_brick', '', '', 'g_lego_duplo', 'gelatin_box', '', '', '', '', 'jenga', '', '', '', 'master_chef_can', '', '', 'mustard_bottle', 'nine_hole_peg_test', '', '', '', '', 'potted_meat_can', '', 'prism', 'pudding_box', 'rubiks_cube', '', '', 'sugar_box', 'tomato_soup_can', 'tuna_fish_can', 'wood_block', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']
 MAX_OBJECTS_IN_SAMPLE = 10
 
@@ -106,3 +107,5 @@ def get_logger(task_name=None):
 		writer = None
 
 	return logger, writer
+
+# logger,writer = get_logger() // Define logger as global variable in case of immediate debugging requirements.
