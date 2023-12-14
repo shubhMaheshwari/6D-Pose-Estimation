@@ -11,7 +11,7 @@ src/.polyscope.ini
 
 dataset/
 rendered_videos/
-
+external/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
