@@ -27,7 +27,8 @@ class ObjectPoseEstimator:
 		self.segmentor = None
 
 		# Mesh Loader 
-		self.meshloader =  MeshInfo(logger=self.logger)
+		self.meshloader = MeshInfo()
+
 
 		# ICP 
 		self.icp = ICP()
@@ -88,7 +89,7 @@ class ObjectPoseEstimator:
 
 		assert torch.all(pose2label[pcd2pose] == pcd2meta[:,[0,3]]), "Inverse mapping not unique"		
 
-		mesh_ids = torch.unique(pose2label[:,-1]) 	
+		mesh_ids = torch.unique(pose2label[:,-1]).cpu().data.numpy() 	
 
 		pcd = {'points': points, 'pcd2meta':pcd2meta,'pose2label':pose2label, 'pcd2pose':pcd2pose, 'mesh_ids':mesh_ids }
 
@@ -99,18 +100,27 @@ class ObjectPoseEstimator:
 	def pose_estimation(self,sample): 
 		"""
 		Algorithm:
-			Input: RGBD image 
-			Get point cloud using the depth image 
-			Get/Predict Segmentation Mask 
-			Reshape images to pcd
-			ICP:
-				Load 3D model
-				Estimate 6D parameters for each object using either
-					Chamfer + ICP
-					Pointnet 
-					Pointnet + ICP 
-					Custom 
-			Render Result
+			For each batch: 
+				Input: 
+					Load RGBD image (BxHxWx3)
+					Load 3D models (M)
+				Get/Predict Segmentation Mask 
+				Get point cloud using the depth image (Px3) 
+
+				ICP + Variants:	// Estimate 6D parameters for each object
+					initialize(rotation and translation)
+					For each iteration:
+						1. sample points from mesh 
+						2. Establish correspondence using either
+							Chamfer + ICP
+							Pointnet 
+							Pointnet + ICP 
+							Custom 
+						3. Run gradient descent
+						4. Update scheduler, loss hyperparameters etc. 
+				Render Result
+				
+				Output: pred-pose
 		"""
 
 		if CUDA:
@@ -120,8 +130,8 @@ class ObjectPoseEstimator:
 		# 1. Get point cloud from depth image + mask 
 		sample['depth_pc'] = self.depth2pc(sample['depth'],sample['intrinsic'])
 		print("Depth to pc:",sample['depth_pc'].shape)
-		# if RENDER:
-		# 	self.vis.show_depth_pc(sample)  
+		if RENDER:
+			self.vis.show_depth_pc(sample,show=False)  
 		self.logger.info("[Completed] Extract Point cloud from depth images")
 
 		# 2. Get segmentation mask
@@ -145,18 +155,18 @@ class ObjectPoseEstimator:
 		# 3. Convert to 3D 
 		sample["pcd"] = self.reshape_image2pcd(sample)
 
-		# 4. Load 3D models
-		sample['mesh'] = self.meshloader.load_sample(sample['pcd']['mesh_ids'])
+		# 4. Get the predicted pose using ICP on meshes
+		sample['mesh'] = {}
+		sample["mesh"]['index'] = [ MESHID2CLASS[x] for x in  sample['pcd']['mesh_ids'] ]
+		sample["mesh"]["meshId2index"] = dict([ (x,i) for i,x in  enumerate(sample['pcd']['mesh_ids']) ])
+		sample["mesh"]['pmesh'] = self.meshloader.pmeshes[sample["mesh"]['index']]
 
-		for mesh in sample['mesh']:
-			mesh.show() 
-
-
-		sample["pred_pose"] = self.icp(sample["pcd"])
-
-
+		sample["pred_pose"] = self.icp(sample)
 
 		# 4. Save results 
+		if RENDER:
+			self.vis.compare_poses(sample,show=True)
+
 
 		self.vis.clear() # Clearing objects passed to polyscope 
 
@@ -172,7 +182,9 @@ class ObjectPoseEstimator:
 			for sample_ind,sample in enumerate(tqdm(dataloader)): 
 				sample = self.pose_estimation(sample)
 				pred_pose_sample = [ x.cpu().data.numpy().tolist() if x.sum() != 0 else None for x in sample['pred_pose'] ]
-				pred_pose[sample['name']] = pred_pose_sample
+				
+				# Evalaute
+				# pred_pose[sample['name']] = pred_pose_sample
 
 			# with open(os.path.join(LOG_DIR),split_type + '_results.json','w') as f:
 			# 	json.dump(pred_pose,f)
