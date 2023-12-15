@@ -72,7 +72,6 @@ class Visualizer:
 			if k in sample_np: continue
 
 			if k == 'pcd': 
-				
 				assert all([ x in sample['pcd'] for x in ['points', 'pcd2meta', 'pose2label', 'pcd2pose', 'mesh_ids']]), f"sample['pcd'] does not match the required file"
 				sample_np['pcd'] = {}
 				show_pose_ids = torch.where(sample['pcd']['pose2label'][:,0] == show_index)[0]
@@ -98,12 +97,13 @@ class Visualizer:
 
 				sample_np["mesh"]["meshId2index"] = dict([ (x,i) for i,x in enumerate(show_class)])
 
+			elif k == 'pred_pose': 
+				show_pose_ids = torch.where(sample['pcd']['pose2label'][:,0] == show_index)[0]
+				sample_np[k] = sample['pred_pose'][show_pose_ids].cpu().data.numpy()
 			elif type(sample[k]) == torch.Tensor: 
-				sample_np[k] = sample[k][0].cpu().data.numpy()
+				sample_np[k] = sample[k][show_index].cpu().data.numpy()
 			elif type(sample[k]) == list: 
-				sample_np[k] = sample[k][0]
-			elif type(sample[k]) == pytorch3d.structures.meshes.Meshes: 
-				assert 'pcd'
+				sample_np[k] = sample[k][show_index]
 			else: 
 				sample_np[k] = sample[k]
 		return sample_np 
@@ -171,15 +171,44 @@ class Visualizer:
 		if show:
 			ps.show()
 
+	@staticmethod
+	def warp_np(points,bsize,pose,ext):
+		assert len(points.shape) == 2 and points.shape[1] == 3, f"Points should be a numpy array of size:Nx3"
+		assert pose.shape == (4,4), f"Pose should be 4x4 matrix"
 
-	def compare_poses(self,sample,show_index=0,stride=10,show=False):
-		sample_np = self.torch2numpy(sample,show_index=show_index)
-		
-		self.ps_objects['mesh'] = {}
-		for idx,mesh_id in enumerate(sample_np['mesh']['meshId2index']): 
-			self.ps_objects['mesh'][mesh_id] = ps.register_surface_mesh(f'{mesh_id}', vertices=sample_np['mesh'][idx], faces=sample_np['mesh']['faces'],enabled=True)
+		orig_size = points.max(axis=0)-points.min(axis=0)
 
-		ps.show()
+		warp_points = points * bsize/orig_size
+		warp_points = warp_points @ pose[:3,:3].T  + pose[:3,3]
+		warp_points = warp_points @  ext[:3,:3].T  +  ext[:3,3]
+		warp_points = Visualizer.reflect_opengl(warp_points)
+
+		return warp_points
+
+	def compare_poses(self,sample,show_index=0,stride=1,show=False):
+
+		if 'mesh' not in self.ps_objects:
+			self.ps_objects['mesh'] = {'gt':{},'pred':{}}
+
+			sample_np = self.torch2numpy(sample,show_index=show_index)
+			
+			gt_mesh_ids = np.where(sample_np['object_ids'])[0]
+			gt_pose = sample_np['gt_poses'][gt_mesh_ids]
+			for idx,mesh_id in enumerate(gt_mesh_ids): 
+				# print(sample_np['box_sizes'][mesh_id])
+				# print(gt_pose[idx])
+				verts = self.warp_np(sample_np['mesh']['verts'][idx],sample_np['box_sizes'][mesh_id],gt_pose[idx],sample_np['extrinsic'])
+				print(verts)
+				self.ps_objects['mesh']['gt'][mesh_id] = ps.register_surface_mesh(f'gt-{mesh_id}', vertices=verts, faces=sample_np['mesh']['faces'][idx],enabled=True,color=np.array([0,1,0]))
+
+
+			# for idx,mesh_id in enumerate(sample_np['mesh']['meshId2index']): 	
+				# verts = self.warp_np(sample_np['mesh']['verts'][idx],sample_np['bsize'],gt_pose[idx],sample_np['extrinsic'])
+			# 	verts = self.reflect_opengl(verts)
+			# 	self.ps_objects['mesh']['pred'][mesh_id] = ps.register_surface_mesh(f'pred-{mesh_id}', vertices=verts, faces=sample_np['mesh']['faces'][idx],enabled=True,color=np.array([1,0,0]))
+
+		if show:
+			ps.show()
 		
 
 

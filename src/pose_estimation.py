@@ -29,10 +29,8 @@ class ObjectPoseEstimator:
 		# Mesh Loader 
 		self.meshloader = MeshInfo()
 
-
 		# ICP 
 		self.icp = ICP()
-
 
 		# Visualizer 
 		self.vis = Visualizer()
@@ -60,8 +58,8 @@ class ObjectPoseEstimator:
 		u = u.to(self.device)
 		v = v.to(self.device)
 		
-		X = (u - cx[:,None,None]) * depth_im / fx[:,None,None]
-		Y = (v - cy[:,None,None]) * depth_im / fy[:,None,None]
+		X = (u + 0.5- cx[:,None,None]) * depth_im / fx[:,None,None]
+		Y = (v + 0.5- cy[:,None,None]) * depth_im / fy[:,None,None]
 		Z = depth_im
 		return torch.stack([X, Y, Z],dim=3)
 
@@ -126,10 +124,9 @@ class ObjectPoseEstimator:
 		if CUDA:
 			sample = self.cpu_to_gpu(sample)
 
-
 		# 1. Get point cloud from depth image + mask 
 		sample['depth_pc'] = self.depth2pc(sample['depth'],sample['intrinsic'])
-		print("Depth to pc:",sample['depth_pc'].shape)
+		# print("Depth to pc:",sample['depth_pc'].shape)
 		if RENDER:
 			self.vis.show_depth_pc(sample,show=False)  
 		self.logger.info("[Completed] Extract Point cloud from depth images")
@@ -167,7 +164,6 @@ class ObjectPoseEstimator:
 		if RENDER:
 			self.vis.compare_poses(sample,show=True)
 
-
 		self.vis.clear() # Clearing objects passed to polyscope 
 
 		return sample
@@ -180,6 +176,7 @@ class ObjectPoseEstimator:
 			self.logger.info(f"Predicting 6D pose for the {split_type} dataset")
 			pred_pose = {}
 			for sample_ind,sample in enumerate(tqdm(dataloader)): 
+				print(sample['name'])
 				sample = self.pose_estimation(sample)
 				pred_pose_sample = [ x.cpu().data.numpy().tolist() if x.sum() != 0 else None for x in sample['pred_pose'] ]
 				
@@ -188,22 +185,22 @@ class ObjectPoseEstimator:
 
 			# with open(os.path.join(LOG_DIR),split_type + '_results.json','w') as f:
 			# 	json.dump(pred_pose,f)
-
-
-############################# Command line Argument Parser #######################################################
-parser = argparse.ArgumentParser(
-					prog='6D Pose estimation',
-					description='6D Pose estimation',
-					epilog='')
-parser.add_argument('-f', '--force',
-					action='store_true')  # on/off flag
-
-parser.add_argument('--image')
-
-
-cmd_line_args = parser.parse_args()
-
 if __name__ == "__main__": 
+
+	############################# Command line Argument Parser #######################################################
+	parser = argparse.ArgumentParser(
+						prog='6D Pose estimation',
+						description='6D Pose estimation',
+						epilog='')
+	parser.add_argument('-f', '--force',
+						action='store_true')  # on/off flag
+
+	parser.add_argument('--image')
+
+
+	cmd_line_args = parser.parse_args()
+
+
 
 	obe = ObjectPoseEstimator()
 	if len(sys.argv) == 1: 

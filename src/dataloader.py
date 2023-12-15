@@ -56,14 +56,13 @@ class SyntheticDataset(Dataset):
 
 	@staticmethod
 	def load_rgbd(sample_path):
-		rgb = plt.imread(sample_path+'_color_kinect.png')
-		depth = plt.imread(sample_path+'_depth_kinect.png')
+		rgb = np.array(PIL.Image.open(sample_path+'_color_kinect.png')) / 255
+		depth = np.array(PIL.Image.open(sample_path+'_depth_kinect.png')) / 1000
 		return  rgb, depth
 		
 	@staticmethod
 	def load_mask(mask_path):
-		image = plt.imread(mask_path)
-		image = (image*255).astype('uint8')
+		image = np.array(PIL.Image.open(mask_path)) 
 		return  image
 
 	@staticmethod
@@ -76,12 +75,15 @@ class SyntheticDataset(Dataset):
 	@staticmethod
 	def load_sample(sample_path,split_type='test',mask_path=""): 
 		rgb,depth = SyntheticDataset.load_rgbd(sample_path)
-		pose = {} if split_type == 'test' else SyntheticDataset.load_pose(sample_path)
+		pose = SyntheticDataset.load_pose(sample_path)
 		mask = SyntheticDataset.load_mask(mask_path) if os.path.isfile(mask_path) else np.empty(0)		
 
 		gt_poses = np.array([ np.zeros((4,4)) if x is None else x for x in pose['poses_world']  ]) if split_type != 'test' else np.empty(0) 
 		object_ids = np.zeros(NUM_OBJECTS)
 		object_ids[pose['object_ids']] = 1
+
+		box_sizes = np.zeros((NUM_OBJECTS,3))
+		box_sizes[pose['object_ids']] = np.array([pose['extents'][idx] * pose['scales'][idx] for idx in pose['object_ids']])
 
 		# print(pose['intrinsic'])    
 
@@ -89,7 +91,8 @@ class SyntheticDataset(Dataset):
 		  'rgb':rgb,'depth':depth,'label':mask,
 		  'extrinsic':pose['extrinsic'], 'intrinsic': pose['intrinsic'],
 		  'gt_poses' : gt_poses, 
-		  'object_ids' : object_ids}
+		  'object_ids' : object_ids,
+          'box_sizes':box_sizes}
 
 	def __getitem__(self,idx):
 		sample_path = os.path.join(self.datapath,'v2.2',self.samples[idx])
@@ -126,144 +129,8 @@ class MeshInfo(Dataset):
             mesh['info'] = mesh_info.iloc[pd_index[0]].T.to_dict()
             meshes[i] = mesh
         return meshes
-
-    ##### Copied from Trimesh for convience: https://github.com/MPEGGroup/trimesh/blob/8f8c807843645c4bbc731b451a9bc1038d34cede/trimesh/exchange/dae.py#L262
-    def _load_texture(self,image_path):
-        """
-        Load a texture from a file into a PIL image.
-        """
-        assert os.path.isfile(image_path), f"{image_path} does not exist"
-        image = PIL.open(image_path)
-        return image
-    
-    def _parse_material(self,effect,idx):
-        """
-        Turn a COLLADA effect into a trimesh material.
-        params: 
-            effect: Collada effect
-            idx: mesh_id
-        """
-
-        # Compute base color
-        baseColorFactor = np.ones(4)
-        baseColorTexture = None
-        if isinstance(effect.diffuse, collada.material.Map):
-            try:
-
-                image_path = os.path.join(
-                    MESH_PATH,self.mesh_info[idx]['name'],'visual_meshes',
-                    effect.diffuse.sampler.surface.image.path)
-                
-                baseColorTexture = self._load_texture(image_path)
-            except BaseException:
-                self.logger.warning('unable to load base texture',exc_info=True)
-        elif effect.diffuse is not None:
-            baseColorFactor = effect.diffuse
-
-        # Compute emission color
-        emissiveFactor = np.zeros(3)
-        emissiveTexture = None
-        if isinstance(effect.emission, collada.material.Map):
-            try:
-                image_path = os.path.join(
-                    MESH_PATH,self.mesh_info[idx]['name'],'visual_meshes',
-                    effect.diffuse.sampler.surface.image.path)
-                emissiveTexture = self._load_texture(image_path)
-            except BaseException:
-                self.logger.warning('unable to load emissive texture',
-                            exc_info=True)
-        elif effect.emission is not None:
-            emissiveFactor = effect.emission[:3]
-
-        # Compute roughness
-        roughnessFactor = 1.0
-        if (not isinstance(effect.shininess, collada.material.Map)
-                and effect.shininess is not None):
-            roughnessFactor = np.sqrt(2.0 / (2.0 + effect.shininess))
-
-        # Compute metallic factor
-        metallicFactor = 0.0
-
-        # Compute normal texture
-        normalTexture = None
-        if effect.bumpmap is not None:
-            try:
-                image_path = os.path.join(
-                    MESH_PATH,self.mesh_info[idx]['name'],'visual_meshes',
-                    effect.bumpmap.sampler.surface.image.path)
-                normalTexture = self._load_texture(image_path)
-            except BaseException:
-                self.logger.warning('unable to load bumpmap',
-                            exc_info=True)
-
-        return trimesh.visual.material.PBRMaterial(
-            emissiveFactor=emissiveFactor,
-            emissiveTexture=emissiveTexture,
-            normalTexture=normalTexture,
-            baseColorTexture=baseColorTexture,
-            baseColorFactor=baseColorFactor,
-            metallicFactor=metallicFactor,
-            roughnessFactor=roughnessFactor
-        )
-
-
-    def trimesh_material_to_pytorch3d(trimesh_material):
-        """
-        Convert a trimesh.visual.PBRMaterial to a pytorch3d.structures.Materials.
-
-        Args:
-        - trimesh_material (trimesh.visual.PBRMaterial): The trimesh PBRMaterial.
-
-        Returns:
-        - pytorch3d.structures.Materials: The corresponding PyTorch3D Materials object.
-        """
-        if not isinstance(trimesh_material, trimesh.visual.material.PBRMaterial):
-            raise ValueError("Input must be a trimesh.visual.PBRMaterial")
-
-        # Extract material properties from trimesh PBRMaterial
-        diffuse_color = torch.tensor(trimesh_material.baseColorFactor, dtype=torch.float32)
-        # specular_color = torch.tensor(trimesh_material.specular_color, dtype=torch.float32)
-        roughness = torch.tensor(trimesh_material.roughnessFactor, dtype=torch.float32)
-        metallic = torch.tensor(trimesh_material.metallicFactor, dtype=torch.float32)
-        specular_texture = torch.tensor(trimesh_material.baseColorTexture.image, dtype=torch.float32)
-        diffuse_texture = torch.tensor(trimesh_material.metallicRoughnessTexture.image, dtype=torch.float32)
-
-        # Create PyTorch3D Materials object
-        materials = Materials(
-            diffuse_color=diffuse_color.unsqueeze(0),  # unsqueeze to add batch dimension
-            # specular_color=specular_color.unsqueeze(0),  # unsqueeze to add batch dimension
-            shininess=1.0 / roughness.unsqueeze(0),  # convert roughness to shininess
-            metallic=metallic.unsqueeze(0),  # unsqueeze to add batch dimension
-            diffuse_texture=diffuse_texture.unsqueeze(0),  # unsqueeze to add batch dimension
-            specular_texture=specular_texture.unsqueeze(0),  # unsqueeze to add batch dimension
-        )
-
-        return materials
-
     
     def load_mesh(self):
-
-
-        # 
-        # c = collada.Collada(filepath)
-        # material = self._parse_material(c.materials[0].effect,idx)
-
-        # primitive=c.geometries[0].primitives[0]
-        # texcoord=primitive.texcoordset[0]
-        # texcoord_index = primitive.texcoord_indexset[0]
-        # uv = texcoord[texcoord_index].reshape((len(texcoord_index) * 3, 2))
-
-        # tvisual = trimesh.visual.TextureVisuals(uv=uv,material=material)
-        # data = trimesh.load(filepath,process=False)
-        # mesh_key = next(iter(data.geometry)) 
-        # tmesh = data.geometry[mesh_key]
-        # tmesh = trimesh.Trimesh(vertices=tmesh.vertices,
-        #   faces=tmesh.faces,
-        #   face_normals=tmesh.face_normals,
-        #   visual=tvisual,
-        #   validate=True,
-        #   process=False
-        # )
         
         # pmeshes = {'verts':[],'faces':[],'textures':[]}
         pmeshes = []
@@ -278,7 +145,7 @@ class MeshInfo(Dataset):
             os.chdir(cur_dir)
         
             # Transfer to Pytorch3D 
-            
+
             verts, faces = torch.from_numpy(tmesh.vertices).float(), torch.from_numpy(tmesh.faces)
             
             texture_uv = torch.from_numpy(np.array(tmesh.visual.uv))
@@ -292,20 +159,12 @@ class MeshInfo(Dataset):
             
             texture = TexturesUV(maps=texture_map[None,:,:,:3], faces_uvs=faces[None], verts_uvs=[texture_uv])
 
-            
-            
-
             mesh = Meshes(
                 verts=verts[None],   
                 faces=faces[None], 
                 textures=texture
             )
 
-            # verts_rgb = torch.ones_like(verts)[None]
-            
-            # pmeshes['verts'].append(verts)
-            # pmeshes['faces'].append(faces)
-            # pmeshes['textures'].append(texture)
             pmeshes.append(mesh)
 
 
