@@ -65,6 +65,10 @@
     ```
 
 
+## C. Debugging 
+1. Visualize correspondence in icp.py (uncomment polyscope rendering code)
+2. Use VSCode
+
 
 ## C. References
 - Pointnet

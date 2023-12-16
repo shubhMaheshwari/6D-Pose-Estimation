@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
-import torchvision.transforms.functional as TF
-import torchvision.transforms as T
-
+# import torchvision.transforms.functional as TF
+# import torchvision.transforms as T
+from skimage.transform import resize
 from utils import *
+
 
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -91,15 +92,15 @@ class Unet(torch.nn.Module):
 
         self.softmax = torch.nn.Softmax(dim=1)
 
-        self.final = nn.Conv2d(82,82,1,padding='same')
+        self.final = nn.Conv2d(82,82,1)
 
 
     def UnetDoubleConv(self,in_channels,out_channels):
         return nn.Sequential(
-            nn.Conv2d(in_channels,out_channels,3,padding='same'),
+            nn.Conv2d(in_channels,out_channels,3,padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels,out_channels,3, padding='same'),
+            nn.Conv2d(out_channels,out_channels,3,padding=1),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
@@ -137,8 +138,27 @@ class Unet(torch.nn.Module):
 
 class Segmentor:
     def __init__(self): 
-        # from torchsummary import summary
         self.device = torch.device('cuda' if CUDA else 'cpu')
         print(f"Loading segmenttion model to:{self.device}")
         self.model = Unet().to(self.device)
-        torch.load()
+        model_params = torch.load(SEGMENTOR_SAVE_PATH)
+        self.model.load_state_dict(model_params)
+        
+
+    def predict_mask(self,rgb):
+        self.model.eval()
+        with torch.no_grad():
+            orig_shape = rgb.shape[1:3]
+            rgb_small = rgb[:,::2,::2]  
+            rgb_small =  rgb_small.permute((0,3,1,2))
+            rgb_small = rgb_small.float()
+            labels = self.model(rgb_small) 
+            dis_label = torch.argmax(labels,dim=1)
+
+            dis_label = dis_label.cpu().data.numpy()
+            dis_label = np.array( [  resize(x,orig_shape, order=0, preserve_range=True, anti_aliasing=False) for x in dis_label])
+            dis_label = torch.from_numpy(dis_label).to(self.device)
+            return dis_label
+
+
+

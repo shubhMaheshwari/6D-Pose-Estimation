@@ -10,6 +10,7 @@ from tqdm import tqdm
 import torch 
 from torch.utils.data import DataLoader
 
+
 # Local Modules 
 from utils import *
 from dataloader import SyntheticDataset,MeshInfo
@@ -79,6 +80,9 @@ class ObjectPoseEstimator:
 
 		"""
 
+		assert sample['label'].shape == sample['depth_pc'].shape[:3], f"Reshape labels to match image size" 
+			
+
 		cond = sample['label'] < NUM_OBJECTS
 		points = sample['depth_pc'][cond,:]
 		label = sample['label'][cond]
@@ -134,18 +138,18 @@ class ObjectPoseEstimator:
 
 		# 2. Get segmentation mask
 		if 'label' not in sample or sample['label'].shape[1] == 0:
-			label = []
-			for file_path in sample['path']:
-				if os.path.isfile(file_path + '_label_kinect.png'):  
-					mask = SyntheticDataset.load_mask(file_path + '_label_kinect.png') 
-					mask = torch.from_numpy(mask).to(self.device)
-				else: 
-					assert self.segmentor is not None, "No segmentation module passed for pose estimation."
-					mask = self.segmentor.predict_mask(sample['image'])
+			# label = []
+			# for file_path in sample['path']:
+			# 	if os.path.isfile(file_path + '_label_kinect.png'):  
+			# 		mask = SyntheticDataset.load_mask(file_path + '_label_kinect.png') 
+			# 		mask = torch.from_numpy(mask).to(self.device)
+			# 	else: 
+			# 		assert self.segmentor is not None, "No segmentation module passed for pose estimation."
+			# 		mask = self.segmentor.predict_mask(sample['rgb'])
 				
-				label.append(mask[None])
+			# 	label.append(mask[None])
 
-			sample['label'] = torch.cat(label,dim=0)
+			sample['label'] = self.segmentor.predict_mask(sample['rgb'])
 		# if RENDER:
 		# 	self.vis.show_segmentation(sample.copy())  
 		self.logger.info("[Completed] Get Segmentation map")
@@ -171,7 +175,6 @@ class ObjectPoseEstimator:
 
 	def dataset_pose_estimation(self): 
 		# Get visualizer 
-		print(LOG_DIR)
 		for split_type in ['test','val','train']: 
 			dataloader = DataLoader(SyntheticDataset(split_type=split_type),batch_size=TRAIN_BATCH_SIZE if split_type == 'train' else TEST_BATCH_SIZE,shuffle=False if split_type=='test' else True)
 			self.logger.info(f"Predicting 6D pose for the {split_type} dataset") 

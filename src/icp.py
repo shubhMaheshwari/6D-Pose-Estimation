@@ -138,35 +138,35 @@ class ICP:
                 print(f"Loss:{[ (x,round(loss_list[x][-1],6)) for x in loss_list if len(loss_list[x]) > 0]} Rotvec:{node_rotations.data[0]} Translation:{node_translations[0]}")            
 
 
-            # if RENDER and self.vis is not None:  
+            if RENDER and self.vis is not None:  
 
-            #     import polyscope as ps 
-            #     show_pose = 0
+                import polyscope as ps 
+                show_pose = 0
 
-            #     ps.remove_all_structures()
-            #     ps.register_point_cloud('Warped',warped_pcd[show_pose,:warped_length[show_pose]].cpu().data.numpy())
-            #     ps.register_point_cloud('Target',target_pts[show_pose,:target_length[show_pose]].cpu().data.numpy())
+                ps.remove_all_structures()
+                ps.register_point_cloud('Warped',warped_pcd[show_pose,:warped_length[show_pose]].cpu().data.numpy())
+                ps.register_point_cloud('Target',target_pts[show_pose,:target_length[show_pose]].cpu().data.numpy())
 
 
-            #     corresp_target = torch.where(valid_target_pts[show_pose])[0]
-            #     if len(corresp_target) > 0: 
-            #         corresp_source = corresp[show_pose][corresp_target]
+                corresp_target = torch.where(valid_target_pts[show_pose])[0]
+                if len(corresp_target) > 0: 
+                    corresp_source = corresp[show_pose][corresp_target]
 
-            #         corresp_points = torch.cat([  target_pts[show_pose,corresp_target],  warped_pcd[show_pose,corresp_source]  ],dim=0)
-            #         corresp_points = corresp_points.cpu().data.numpy()
-            #         corresp_edges = np.array([ [i,i+len(corresp_target)] for i in range(len(corresp_target))])
+                    corresp_points = torch.cat([  target_pts[show_pose,corresp_target],  warped_pcd[show_pose,corresp_source]  ],dim=0)
+                    corresp_points = corresp_points.cpu().data.numpy()
+                    corresp_edges = np.array([ [i,i+len(corresp_target)] for i in range(len(corresp_target))])
 
-            #         ps.register_curve_network('Corresp', corresp_points,corresp_edges,radius=0.001)
+                    ps.register_curve_network('Corresp', corresp_points,corresp_edges,radius=0.001)
 
                 
-            #     if iteration == 0: 
-            #         ps.show()
+                if iteration == 0: 
+                    ps.show()
 
-            #     os.makedirs(os.path.join(RENDER_DIR,sample['name'][show_pose],"images"),exist_ok=True)
-            #     image_path = os.path.join(RENDER_DIR,sample['name'][show_pose],"images",f"icp_iter_{iteration}.png")
-            #     print(f"Saving plot to :{image_path}")	
-            #     ps.set_screenshot_extension(".png");
-            #     ps.screenshot(image_path,transparent_bg=False)
+                os.makedirs(os.path.join(RENDER_DIR,sample['name'][show_pose],"images"),exist_ok=True)
+                image_path = os.path.join(RENDER_DIR,sample['name'][show_pose],"images",f"icp_iter_{iteration}.png")
+                print(f"Saving plot to :{image_path}")	
+                ps.set_screenshot_extension(".png");
+                ps.screenshot(image_path,transparent_bg=False)
 
 
 
@@ -187,13 +187,13 @@ class ICP:
 
 
         print(f"Loss list:{loss_list}")
-        # if RENDER:
-        #     image_path = os.path.join(RENDER_DIR,sample['name'][show_pose],"images",f"icp_iter_\%d.png")
-        #     video_path = os.path.join(RENDER_DIR,'videos',sample['name'][show_pose]+ f"-icp.mp4")
-        #     palette_path = os.path.join(RENDER_DIR,sample['name'][show_pose],"images",f"palette.png") 
-        #     framerate = 24
-        #     os.system(f"ffmpeg -y -framerate {framerate} -i {image_path} -vf palettegen {palette_path}")
-        #     os.system(f"ffmpeg -y -framerate {framerate} -i {image_path} -i {palette_path} -lavfi paletteuse {video_path}")
+        if RENDER and self.vis is not None:
+            image_path = os.path.join(RENDER_DIR,sample['name'][show_pose],"images",f"icp_iter_\%d.png")
+            video_path = os.path.join(RENDER_DIR,'videos',sample['name'][show_pose]+ f"-icp.mp4")
+            palette_path = os.path.join(RENDER_DIR,sample['name'][show_pose],"images",f"palette.png") 
+            framerate = 24
+            os.system(f"ffmpeg -y -framerate {framerate} -i {image_path} -vf palettegen {palette_path}")
+            os.system(f"ffmpeg -y -framerate {framerate} -i {image_path} -i {palette_path} -lavfi paletteuse {video_path}")
 
         pred_pose = torch.stack([ node_rotations[p].matrix() for p in range(P)])  
         pred_pose[:,:3,3] = node_translations
