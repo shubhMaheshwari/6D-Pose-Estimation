@@ -89,7 +89,7 @@ class SyntheticDataset(Dataset):
 
 		return {'path':sample_path, 'name': os.path.basename(sample_path),		  
 		  'rgb':rgb,'depth':depth,'label':mask,
-		  'extrinsic':pose['extrinsic'], 'intrinsic': pose['intrinsic'],
+		  'extrinsic':pose['extrinsic'].astype(np.float64), 'intrinsic': pose['intrinsic'].astype(np.float64),
 		  'gt_poses' : gt_poses, 
 		  'object_ids' : object_ids,
           'box_sizes':box_sizes}

@@ -2,6 +2,15 @@ import os
 import csv
 from collections import OrderedDict
 import numpy as np
+import pickle 
+
+import sys 
+
+
+sys.path.append('..')
+
+from utils import *
+from dataloader import 
 
 try:
     from . import pose_utils
@@ -102,3 +111,21 @@ def test():
 
     pose_evaluator = PoseEvaluator()
     print(pose_evaluator.evaluate('bowl', R_est, R_gt, t_est, t_gt, np.ones(3)))
+
+
+if __name__ == "__main__":
+    pose_evaluator = PoseEvaluator()
+    RESULT_DIR = '/media/shubh/Elements/UCSD-Assignments/CSE275/HW2/results'
+    for split_type in os.listdir(RESULT_DIR): 
+        for sample in dataset:        
+            with open(os.path.join(RESULT_DIR,split_type)): 
+                pred_poses_json = json.load(f)
+            
+            for name in pred_poses_json:
+
+
+
+
+        print(pose_evaluator.evaluate('bowl', R_est, R_gt, t_est, t_gt, np.ones(3)))
+
+

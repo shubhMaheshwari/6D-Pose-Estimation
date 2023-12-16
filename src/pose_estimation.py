@@ -15,7 +15,7 @@ from utils import *
 from dataloader import SyntheticDataset,MeshInfo
 from renderer import Visualizer
 from icp import ICP
-
+from segmentor import Segmentor
 
 class ObjectPoseEstimator: 
 	def __init__(self): 
@@ -24,16 +24,18 @@ class ObjectPoseEstimator:
 		# Get logger 
 		self.logger,self.writer = get_logger(task_name='ICP')
 
-		self.segmentor = None
+		self.segmentor = Segmentor()
 
 		# Mesh Loader 
 		self.meshloader = MeshInfo()
 
-		# ICP 
-		self.icp = ICP()
 
 		# Visualizer 
 		self.vis = Visualizer()
+
+		# ICP 
+		self.icp = ICP(vis=self.vis)
+
 
 
 	def cpu_to_gpu(self,sample): 
@@ -127,8 +129,7 @@ class ObjectPoseEstimator:
 		# 1. Get point cloud from depth image + mask 
 		sample['depth_pc'] = self.depth2pc(sample['depth'],sample['intrinsic'])
 		# print("Depth to pc:",sample['depth_pc'].shape)
-		if RENDER:
-			self.vis.show_depth_pc(sample,show=False)  
+		  
 		self.logger.info("[Completed] Extract Point cloud from depth images")
 
 		# 2. Get segmentation mask
@@ -162,29 +163,55 @@ class ObjectPoseEstimator:
 
 		# 4. Save results 
 		if RENDER:
+			self.vis.clear() # Clearing objects passed to polyscope 
+			self.vis.show_depth_pc(sample,show=False)
 			self.vis.compare_poses(sample,show=True)
-
-		self.vis.clear() # Clearing objects passed to polyscope 
 
 		return sample
 
 	def dataset_pose_estimation(self): 
 		# Get visualizer 
 		print(LOG_DIR)
-		for split_type in ['train','val','test']: 
-			dataloader = DataLoader(SyntheticDataset(split_type=split_type),batch_size=TRAIN_BATCH_SIZE,shuffle=False if split_type=='test' else True)
-			self.logger.info(f"Predicting 6D pose for the {split_type} dataset")
+		for split_type in ['test','val','train']: 
+			dataloader = DataLoader(SyntheticDataset(split_type=split_type),batch_size=TRAIN_BATCH_SIZE if split_type == 'train' else TEST_BATCH_SIZE,shuffle=False if split_type=='test' else True)
+			self.logger.info(f"Predicting 6D pose for the {split_type} dataset") 
 			pred_pose = {}
 			for sample_ind,sample in enumerate(tqdm(dataloader)): 
 				print(sample['name'])
 				sample = self.pose_estimation(sample)
-				pred_pose_sample = [ x.cpu().data.numpy().tolist() if x.sum() != 0 else None for x in sample['pred_pose'] ]
 				
+				self.save_poses(sample,split_type)
 				# Evalaute
 				# pred_pose[sample['name']] = pred_pose_sample
 
 			# with open(os.path.join(LOG_DIR),split_type + '_results.json','w') as f:
 			# 	json.dump(pred_pose,f)
+	
+	@staticmethod
+	def save_poses(sample,split_type):
+		global RESULT_DIR
+		os.makedirs(RESULT_DIR,exist_ok=True)
+
+		save_path = os.path.join(RESULT_DIR,split_type+'.json')
+		if os.path.isfile(save_path):
+			with open(save_path,'r') as f: 
+				cur_results = json.load(f)
+		else: 
+			cur_results = {}
+		
+		pred_pose_sample = [ x.cpu().data.numpy().tolist() if x.sum() != 0 else None for x in sample['pred_pose'] ]
+		for i,name in enumerate(sample['name']): 
+			if name in cur_results: continue
+
+			cur_results[name] = {'poses_world': [None]*NUM_OBJECTS}
+			valid_poses_index = torch.where(sample['pcd']['pose2label'][:,0] == i)[0]			
+			for p in valid_poses_index:
+				sample_ind,class_id = sample['pcd']['pose2label'][p]
+				cur_results[name]['poses_world'][class_id.item()] = pred_pose_sample[p]
+
+		with open(save_path,'w') as f: 
+			json.dump(cur_results,f)
+
 if __name__ == "__main__": 
 
 	############################# Command line Argument Parser #######################################################

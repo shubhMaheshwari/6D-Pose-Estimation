@@ -18,7 +18,9 @@ DATASET_DIR = os.path.join(HOME_DIR,'dataset') # Path containing all the trainin
 MESH_PATH = os.path.join(DATASET_DIR,'models','models')
 RENDER_DIR = os.path.join(HOME_DIR,'rendered_videos')
 LOG_DIR = os.path.join(HOME_DIR,'logs')
+RESULT_DIR = os.path.join(HOME_DIR,'results')
 
+SEGMENTOR_SAVE_PATH = os.path.join(HOME_DIR,'dataset','segmentation_model_halfsize.pth')
 ## Dataset split paths 
 TRAIN_PATH = os.path.join(DATASET_DIR,"training_data/training_data_filtered/training_data/")
 TEST_PATH = os.path.join(DATASET_DIR,"testing_data_pose/testing_data_pose_filtered/testing_data/")
@@ -34,7 +36,8 @@ MAX_OBJECTS_IN_SAMPLE = 10
 ############################# POSE Estimation HYPERPARAMETERS #######################################################
 CUDA=True
 TRAIN_BATCH_SIZE=16
-RENDER=True
+TEST_BATCH_SIZE=32
+RENDER=False
 
 ############################# LOGGING #######################################################
 DEBUG = True

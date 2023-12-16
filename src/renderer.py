@@ -51,6 +51,7 @@ class Visualizer:
 		"""
 			Remove the polyscope objects 
 		"""
+		ps.remove_all_structures()
 		del self.ps_objects
 		self.ps_objects = {}
 
@@ -95,7 +96,7 @@ class Visualizer:
 				sample_np['mesh']['verts'] = [ x.cpu().data.numpy() for x in meshes.verts_list()]
 				sample_np['mesh']['faces'] = [ x.cpu().data.numpy() for x in meshes.faces_list()]
 
-				sample_np["mesh"]["meshId2index"] = dict([ (x,i) for i,x in enumerate(show_class)])
+				sample_np["mesh"]["meshId2index"] = dict([ (x,i) for i,x in enumerate(show_mesh_ids)])
 
 			elif k == 'pred_pose': 
 				show_pose_ids = torch.where(sample['pcd']['pose2label'][:,0] == show_index)[0]
@@ -191,27 +192,30 @@ class Visualizer:
 			self.ps_objects['mesh'] = {'gt':{},'pred':{}}
 
 			sample_np = self.torch2numpy(sample,show_index=show_index)
-			
-			gt_mesh_ids = np.where(sample_np['object_ids'])[0]
-			gt_pose = sample_np['gt_poses'][gt_mesh_ids]
-			for idx,mesh_id in enumerate(gt_mesh_ids): 
-				# print(sample_np['box_sizes'][mesh_id])
-				# print(gt_pose[idx])
-				verts = self.warp_np(sample_np['mesh']['verts'][idx],sample_np['box_sizes'][mesh_id],gt_pose[idx],sample_np['extrinsic'])
-				print(verts)
-				self.ps_objects['mesh']['gt'][mesh_id] = ps.register_surface_mesh(f'gt-{mesh_id}', vertices=verts, faces=sample_np['mesh']['faces'][idx],enabled=True,color=np.array([0,1,0]))
+			if len(sample_np['gt_poses']) > 0:
+				gt_mesh_ids = np.where(sample_np['object_ids'])[0]
+				gt_pose = sample_np['gt_poses'][gt_mesh_ids]
+				for idx,mesh_id in enumerate(gt_mesh_ids): 
+					# print(sample_np['box_sizes'][mesh_id])
+					# print(gt_pose[idx])
+					verts = self.warp_np(sample_np['mesh']['verts'][idx],sample_np['box_sizes'][mesh_id],gt_pose[idx],sample_np['extrinsic'])
+					self.ps_objects['mesh']['gt'][mesh_id] = ps.register_surface_mesh(f'gt-{mesh_id}', vertices=verts, faces=sample_np['mesh']['faces'][idx],enabled=True,color=np.array([0,1,0]))
 
 
-			# for idx,mesh_id in enumerate(sample_np['mesh']['meshId2index']): 	
-				# verts = self.warp_np(sample_np['mesh']['verts'][idx],sample_np['bsize'],gt_pose[idx],sample_np['extrinsic'])
-			# 	verts = self.reflect_opengl(verts)
-			# 	self.ps_objects['mesh']['pred'][mesh_id] = ps.register_surface_mesh(f'pred-{mesh_id}', vertices=verts, faces=sample_np['mesh']['faces'][idx],enabled=True,color=np.array([1,0,0]))
+			for mesh_id in sample_np['mesh']['meshId2index']:
+				idx =  sample_np['mesh']['meshId2index'][mesh_id]	
+				verts = self.warp_np(sample_np['mesh']['verts'][idx],sample_np['box_sizes'][mesh_id],sample_np['pred_pose'][idx],sample_np['extrinsic'])
+				self.ps_objects['mesh']['pred'][mesh_id] = ps.register_surface_mesh(f'pred-{mesh_id}', vertices=verts, faces=sample_np['mesh']['faces'][idx],enabled=True,color=np.array([1,0,0]))
 
+			P = torch.where(sample['pcd']['pose2label'] == 0 )[0]
+			centroid_pcd = torch.stack([sample['pcd']['points'][sample['pcd']['pcd2pose'] == p,:].mean(dim=0) for p in P ])
+			centroid_pcd = centroid_pcd.cpu().data.numpy()
+			self.ps_objects['centroid'] = ps.register_point_cloud(f'centroid_pcds',self.reflect_opengl(centroid_pcd))
 		if show:
 			ps.show()
 		
 
-
+		return 
 
 if __name__ == "__main__":
 
